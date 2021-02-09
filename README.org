@@ -3,7 +3,7 @@
 * Understanding the code
 The estimation includes these steps, in no particular order:
 - a projection onto the non-negative orthant: this is provided by [[file:MHA_backend.py::ProjectNonNegative][ProjectNonNegative]] and [[file:MHA_backend.py::ProjectMax1][ProjectMax1]].
--
+- The augmented lagrangian [[file:MHA_backend.py::102][step]].
 
 
 ** The variables
