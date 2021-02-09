@@ -1,0 +1,5 @@
+*.pyc
+.ipynb_checkpoints
+tags
+data/
+.python-version

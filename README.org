@@ -1,0 +1,10 @@
+#+TITLE: Improved MHA
+
+* Understanding the code
+The estimation includes these steps, in no particular order:
+- a projection onto the non-negative orthant: this is provided by [[file:MHA_backend.py::ProjectNonNegative][ProjectNonNegative]] and [[file:MHA_backend.py::ProjectMax1][ProjectMax1]].
+-
+
+
+** The variables
+- =Shat= in the code refers to \(\{\Sigma^{(i)}\}_{1\leq i \leq N}\).
