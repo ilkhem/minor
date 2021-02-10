@@ -1,50 +1,38 @@
-from MHA_backend import nonNegativeCovFactor_LagrangeMult
+from MHA_backend import optimize
 from nilearn import plotting
 import numpy as np
 
 
 class MHA:
-    """
-    class for MHA object
-
-    INPUT:
-            -
-    """
-
-    def __init__(self, Shat, k, diagG=False):
-        self.Shat = Shat
+    def __init__(self, k, diag=False):
         self.k = k
-        self.diagG = diagG
+        self.diag = diag
+        self.N = 0
         self.W = None
         self.G = None
-        self.iter = None
+        self.n_iters = None
 
     def __repr__(self):
         mes = "MHA object\n"
-        mes += "Number of subjects: " + str(len(self.Shat)) + "\n"
+        mes += "Number of subjects: " + str(self.N) + "\n"
         mes += "Latent variable dim: " + str(self.k) + "\n"
-        if self.diagG:
+        if self.diag:
             mes += "Diagonal latent variable covariance"
         else:
             mes += "Full (ie non-diagonal) latent variable covariance"
         return mes
 
-    def fit(self, lagParam=1, tol=0.01, alphaArmijo=0.5, maxIter=1000):
+    def fit(self, X, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000):
         """
         estimate loading matrix and latent variable covariances
         """
-        res = nonNegativeCovFactor_LagrangeMult(
-            Shat=self.Shat,
-            k=self.k,
-            diagG=self.diagG,
-            lagParam=lagParam,
-            tol=tol,
-            alphaArmijo=alphaArmijo,
-            maxIter=maxIter,
-        )
+        self.N = len(X)
+        res = optimize(X, self.k, diag=self.diag,
+                       rho=rho, tol=tol, max_iter=max_iter,
+                       alpha=alpha, c=c)
         self.W = res["W"]
         self.G = res["G"]
-        self.iter = res["iter"]
+        self.n_iters = res["n_iters"]
 
     def transform(self, Xnew):
         """
@@ -53,7 +41,6 @@ class MHA:
         INPUT:
                 - Xnew: list of numpy array, each entry should be an n by p array of n observations for p random variables
         """
-
         ProjXnew = [X.dot(self.W) for X in Xnew]
         return ProjXnew
 

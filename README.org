@@ -1,10 +1,6 @@
 #+TITLE: Improved MHA
 
-* Understanding the code
-The estimation includes these steps, in no particular order:
-- a projection onto the non-negative orthant: this is provided by [[file:MHA_backend.py::ProjectNonNegative][ProjectNonNegative]] and [[file:MHA_backend.py::ProjectMax1][ProjectMax1]].
-- The augmented lagrangian [[file:MHA_backend.py::102][step]].
+This repo contains an in improved implementation of the MHA algorithm citep:monti2018unified,monti2020interpretable.
 
-
-** The variables
-- =Shat= in the code refers to \(\{\Sigma^{(i)}\}_{1\leq i \leq N}\).
+bibliographystyle:apalike
+bibliography:refs_zot.bib

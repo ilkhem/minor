@@ -1,216 +1,144 @@
-### Python implementation of MHA algorithm (Monti & Hyvarinen, UAI 2018)
-
-
 import numpy as np
 
 
-def ProjectNonNegative(W):
-    """
-    projection onto the non-negative orthant
-    """
-
+def project_non_negative(W):
     return W * (W > 0)
 
 
-def ProjectMax1(W):
-    """
-    project onto set of non-neg matricies with one nonzero entry per row
-    """
-    for i in range(W.shape[0]):
-        max_id = W[i, :].argmax()
-        W[i, :][np.where(W[i, :] < W[i, max_id])[0]] = 0
-        W[i, max_id] = max(0, W[i, max_id])
-
-    return W
+def normalize_columns(W):
+    """a faster implementation of normalizeColumns (~3 times faster)"""
+    return W / (np.linalg.norm(W, axis=0)[None, :] + 0.001)
 
 
-def normalizeColumns(W):
-    """
-    standardize columns of W to be unit norm
-    """
-    for i in range(W.shape[1]):
-        W[:, i] /= np.linalg.norm(W[:, i]) + 0.001
-
-    return W
+def efficient_WTcovW(W, X):
+    """a fast and memory efficient implementation of W.T.dot(cov(X)).dot(W)"""
+    tmp = (X - X.mean(0)).dot(W) / np.sqrt(X.shape[0] - 1)
+    return tmp.T.dot(tmp)
 
 
-def AupdateDiag(W, EmpCov):
-    """
-    update A matrix assuming latent variables have diagonal covariance structure
-    """
-
-    targets = np.diag(W.T.dot(EmpCov).dot(W))
-    Anew = np.eye(W.shape[1]) - np.diag(1.0 / targets)
-
-    return Anew
+def efficient_gradJ(W, X, AA):
+    """a fast and memory efficient implementation of cov(X).dot(W).dot(AA)"""
+    X_tilde = (X - X.mean(0)) / np.sqrt(X.shape[0] - 1)
+    tmp = X_tilde.dot(W)
+    tmp = tmp.dot(AA)
+    return X_tilde.T.dot(tmp)
 
 
-def AupdateNonDiag(W, EmpCov):
-    """
-    update A matrix without assuming latent variables have diagonal covariance structure
-    """
-
-    invMat = np.linalg.pinv(W.T.dot(EmpCov).dot(W))
-    Anew = np.eye(W.shape[1]) - invMat
-
-    # check for negative eigenvalues
-    if np.min(np.linalg.eig(Anew)[0]) <= 0:
-        Anew += np.eye(W.shape[1]) * (np.abs(np.min(np.linalg.eig(Anew)[0])) + 0.001)
-
-    return Anew
+def project_W(W):
+    """a much faster implementation of ProjectMax1 (10+ times faster)"""
+    am = W.argmax(axis=1)
+    m = W.max(axis=1)
+    W = np.zeros_like(W)
+    W[np.arange(W.shape[0]), am] = m
+    return project_non_negative(W)
 
 
-def armijoUpdateW_MultiSubject_penalized(
-    W, Wgrad, Gtilde, Shat, alpha=0.5, c=0.001, useStiefel=False, maxIter=1000
-):
-    """
-    update projection matrix, W, using armijo backtracking
-    """
-    nSub = len(Shat)
-    stopBackTracking = False
-    Wgrad = normalizeColumns(Wgrad)
-    iterCount = 0
-
-    while stopBackTracking == False:
-        if useStiefel:
-            Wnew = W - alpha * (Wgrad - W.dot(Wgrad.T).dot(W))
-        else:
-            Wnew = W - alpha * Wgrad
-
-        Wnew = ProjectNonNegative(Wnew)
-        Wnew = normalizeColumns(Wnew)
-
-        currObj = 0
-        newObj = 0
-        for i in range(nSub):
-            currObj += np.diag(W.T.dot(Shat[i]).dot(W).dot(Gtilde[i])).sum()
-            newObj += np.diag(Wnew.T.dot(Shat[i]).dot(Wnew).dot(Gtilde[i])).sum()
-
-        if newObj <= currObj + c * alpha * (
-            np.diag(np.diag(Wgrad.T.dot(Wnew - W))).sum() + 0.001
-        ):
-            stopBackTracking = True
-        else:
-            alpha /= 2
-            iterCount += 1
-            if iterCount > maxIter:
-                stopBackTracking = True
-
-    return Wnew
-
-
-def nonNegativeCovFactor_LagrangeMult(
-    Shat, k=2, diagG=False, lagParam=1, tol=0.01, alphaArmijo=0.5, maxIter=1000
-):
-    """
-
-    INPUT:
-            - Shat: list with each entry a square covariance matrix (np array)
-            - k: rank of approximation (dimensionality of latent variables)
-            - diagG: should latent variables have diagonal covariance structure
-            - lagParam: coefficient for augmented lagrangian
-            - alphaArmijo: backtracking parameter for Armijo rule
-            - maxIter: max number of iterations
-
-    OUTPUT:
-            - W: non-negative orthonormal loading matrix
-            - G: list, each entry a square latent variable covariance (np array)
-            - iter: number of iterations
-
-
-
-    the model proposed by Monti & Hyvarinen (2018) is as follows:
-            - we have observations X_1, \ldots, X_n which following a zero mean Gaussian with covariance \Sigma
-            - we model \Sigma = W G W^T + I for orthonormal W of rank K and dense G (k by k)
-            - we propose to learn W and G via score matching with some constraints on W
-            - we introduce non-negativity and orthonormality constraints on W in order to ensure the model is identifiable.
-            - we note that directly optimizing over the set of non-neg orthonormal matricies is too difficult (depends very highly
-            on the initial choice of W!). As a result, we employ augmented Lagragian multipliers and enforce orthonormality only
-            in the limit (non-negativity is enforced at each iteration)
-
-
-
-    """
-
-    # define initial parameters:
-    p = Shat[0].shape[0]
-    nSub = len(Shat)
-    ShatMean = np.zeros((p, p))  # mean covariance across all subjects
-    for i in range(nSub):
-        ShatMean += (1.0 / nSub) * Shat[i]
-    LagMult = np.zeros((k, k))
-
-    # initialize W to eigenvalues of ShatMean
-    evdShat = np.linalg.eig(ShatMean)
-    W = evdShat[1][
-        :, evdShat[0].argsort()[::-1][:k]
-    ]  # np.linalg.eig( ShatMean )[1][ :, :k ]
-    # check if we should flip the sign (as evectors are sign invariant)
-    for i in range(W.shape[1]):
-        if np.sum(W[:, i]) < 0:
-            W[:, i] *= -1
-
-    # define convergence checks
-    Wold = np.copy(W)
-    W = ProjectNonNegative(W)
-
-    # define A matrices (related to latent var covariances)
-    if diagG:
-        A = [AupdateDiag(W, Shat[i]) for i in range(nSub)]
+def update_A(W, X, diag=False):
+    """a much faster implementation of AupdateNonDiag (10+ times faster)
+    and uses more than 4 times less memory"""
+    tmp = efficient_WTcovW(W, X)
+    if not diag:
+        tmp = np.eye(W.shape[1]) - np.linalg.pinv(tmp)
     else:
-        A = [AupdateNonDiag(W, Shat[i]) for i in range(nSub)]
+        tmp = np.eye(W.shape[1]) - np.diag(1 / np.diag(tmp))
+    # TODO: figure out why he checks for positive eigenvals
+    min_ev = np.min(np.linalg.eig(tmp)[0])
+    if min_ev <= 0:
+        tmp += np.eye(W.shape[1]) * (np.abs(min_ev) + 0.001)
+    return tmp
 
-    cArmijo = 0.01
 
-    for iter_ in range(maxIter):
+def update_G(W, X, diag=False):
+    tmp = efficient_WTcovW(W, X)
+    if diag:
+        tmp = np.diage(np.diag(tmp))
+    return tmp - np.eye(W.shape[1])
+
+
+def armijo_obj(W, X, A):
+    # TODO: what is this obj???
+    # expects the following dims:
+    # W: (p, k)
+    # X: list-like of N (n_i, p) matrices
+    # A: list-like of N (k, k) matrices
+    obj = 0
+    for x, a in zip(X, A):
+        tmp = efficient_WTcovW(W, x)
+        obj += np.trace(tmp.dot(a))
+    return obj
+
+
+def update_W(W, grad, A, X, alpha=0.5, c=0.001, tau=0.5, max_iter=1000):
+    grad = normalize_columns(grad)
+    i = 1
+    while True:
+        # TODO: figure out what stiefiel does
+        W_new = W - alpha * grad
+        # TODO: is normalizing necessary here?
+        # W_new = normalize_columns(project_non_negative(W_new))
+
+        obj = armijo_obj(W, X, A)
+        obj_new = armijo_obj(W_new, X, A)
+
+        # the original impl seems to
+        # - use W_new - W = - alpha*grad, but then multiplies the whole by another alpha.
+        # - compute a central diagof things, which I don't understand
+        # - add a +0.001 which is also mysterious
+        # TODO: figure out why he does that
+        if obj_new <= obj - c * alpha * np.linalg.norm(grad) ** 2:
+            break
+        alpha *= tau
+        i += 1
+        if i > max_iter:
+            break
+    return W_new
+
+
+def init_W(X, k):
+    p = X[0].shape[1]
+    mean_cov = np.zeros((p, p))  # mean covariance across all subjects
+    for i in range(len(X)):
+        mean_cov += (1.0 / len(X)) * np.cov(X[i], rowvar=False)
+    eig_vals, eig_vecs = np.linalg.eig(mean_cov)
+    idx = eig_vals.argsort()[::-1][:k]
+    W = eig_vecs[:, idx]
+    # TODO: is the sign flip necessary?
+    return project_non_negative(W * (2 * (W.sum(0) >= 0) - 1))
+
+
+def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000):
+    N = len(X)
+    # define initial parameters:
+    Lambda = np.zeros((k, k))
+    W = init_W(X, k)
+    W = normalize_columns(W)
+    W_old = np.copy(W)
+
+    for n_iters in range(max_iter):
         # -------- update W matrix --------
-        # first compute Atilde
-        AtildeAll = [0.5 * Amat.dot(Amat) - Amat for Amat in A]
+        # first compute A
+        A = [update_A(W, X[i], diag=diag) for i in range(N)]
+        AA = [0.5 * a.dot(a) - a for a in A]
         # compute gradient of SM objective with respect to W
-        Wgrad = np.zeros(W.shape)
-        for i in range(nSub):
-            Wgrad += Shat[i].dot(W).dot(AtildeAll[i]) / float(nSub)
-        Wgrad += lagParam * (W.dot(W.T).dot(W) - W) + W.dot(LagMult)
+        grad = np.zeros(W.shape)
+        for i in range(N):
+            # TODO: why divide by N?
+            grad += efficient_gradJ(W, X[i], AA[i]) / N
+        grad += rho * (W.dot(W.T.dot(W) - np.eye(k) + Lambda / rho))
         # compute armijo update:
-        W = armijoUpdateW_MultiSubject_penalized(
-            W=W,
-            Wgrad=Wgrad,
-            Gtilde=AtildeAll,
-            Shat=Shat,
-            alpha=alphaArmijo,
-            c=cArmijo,
-            useStiefel=False,
-        )
-        W = ProjectNonNegative(W)  # to ensure non-negativity
-        W = normalizeColumns(W)
-
-        # -------- update A matrices --------
-        if diagG:
-            A = [
-                AupdateDiag(normalizeColumns(ProjectMax1(W)), Shat[i])
-                for i in range(nSub)
-            ]
-        else:
-            A = [
-                AupdateNonDiag(normalizeColumns(ProjectMax1(W)), Shat[i])
-                for i in range(nSub)
-            ]
+        W = update_W(W, grad, AA, X, alpha=alpha, c=c)
+        W = normalize_columns(project_non_negative(W))  # to ensure non-negativity
 
         # -------- update Lagrange multipler --------
-        LagMult = LagMult + lagParam * (W.T.dot(W) - np.eye(k))
+        Lambda = Lambda + rho * (W.T.dot(W) - np.eye(k))
 
         # -------- check for convergence --------
-        if np.sum(np.abs(W - Wold)) < tol:
+        if np.linalg.norm(W - W_old) < tol:
             break
         else:
-            Wold = np.copy(W)
+            W_old = np.copy(W)
 
-    # compute final matrices
-    W = normalizeColumns(ProjectMax1(W))
-    # compute G (latent variable covariances)
-    if diagG:
-        G = [np.diag(np.diag(W.T.dot(Shat[i]).dot(W))) - np.eye(k) for i in range(nSub)]
-    else:
-        G = [W.T.dot(Shat[i]).dot(W) - np.eye(k) for i in range(nSub)]
+    W = normalize_columns(project_W(W))
+    G = [update_G(W, X[i], diag=diag) for i in range(N)]
 
-    return {"W": W, "G": G, "iter": iter_}
+    return {"W": W, "G": G, "n_iters": n_iters}
