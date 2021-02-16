@@ -109,7 +109,8 @@ def update_A(W, X, diag=False):
         tmp = np.eye(W.shape[1]) - np.linalg.pinv(tmp)
     else:
         tmp = np.eye(W.shape[1]) - np.diag(1 / np.diag(tmp))
-    # TODO: figure out why he checks for positive eigenvals
+    # the operation above sometimes results in a non pos-def matrix, we
+    # take care of this by ensuring that the smallest eig-val of A is pos.
     min_ev = np.min(np.linalg.eig(tmp)[0])
     if min_ev <= 0:
         tmp += np.eye(W.shape[1]) * (np.abs(min_ev) + 0.001)
@@ -119,7 +120,7 @@ def update_A(W, X, diag=False):
 def update_G(W, X, diag=False):
     tmp = efficient_WTcovW(W, X)
     if diag:
-        tmp = np.diage(np.diag(tmp))
+        tmp = np.diag(np.diag(tmp))
     return tmp - np.eye(W.shape[1])
 
 
@@ -140,19 +141,10 @@ def update_W(W, grad, A, X, alpha=0.5, c=0.001, tau=0.5, max_iter=1000):
     grad = normalize_columns(grad)
     i = 1
     while True:
-        # TODO: figure out what stiefiel does
         W_new = W - alpha * grad
-        # TODO: is normalizing necessary here?
         # W_new = normalize_columns(project_non_negative(W_new))
-
         obj = armijo_obj(W, X, A)
         obj_new = armijo_obj(W_new, X, A)
-
-        # the original impl seems to
-        # - use W_new - W = - alpha*grad, but then multiplies the whole by another alpha.
-        # - compute a central diagof things, which I don't understand
-        # - add a +0.001 which is also mysterious
-        # TODO: figure out why he does that
         if obj_new <= obj - c * alpha * np.linalg.norm(grad) ** 2:
             break
         alpha *= tau
@@ -163,6 +155,7 @@ def update_W(W, grad, A, X, alpha=0.5, c=0.001, tau=0.5, max_iter=1000):
 
 
 def init_W(X, k):
+    # TODO: find an impl that doesn't create pxp matrices
     p = X[0].shape[1]
     mean_cov = np.zeros((p, p))  # mean covariance across all subjects
     for i in range(len(X)):
@@ -170,7 +163,6 @@ def init_W(X, k):
     eig_vals, eig_vecs = np.linalg.eig(mean_cov)
     idx = eig_vals.argsort()[::-1][:k]
     W = eig_vecs[:, idx]
-    # TODO: is the sign flip necessary?
     return project_non_negative(W * (2 * (W.sum(0) >= 0) - 1))
 
 
@@ -190,8 +182,8 @@ def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000
         # compute gradient of SM objective with respect to W
         grad = np.zeros(W.shape)
         for i in range(N):
-            # TODO: why divide by N?
-            grad += efficient_gradJ(W, X[i], AA[i]) / N
+            # grad += efficient_gradJ(W, X[i], AA[i]) / float(N)
+            grad += efficient_gradJ(W, X[i], AA[i])
         grad += rho * (W.dot(W.T.dot(W) - np.eye(k) + Lambda / rho))
         # compute armijo update:
         W = update_W(W, grad, AA, X, alpha=alpha, c=c)
