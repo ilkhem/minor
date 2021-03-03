@@ -161,14 +161,14 @@ def nonNegativeCovFactor_LagrangeMult(
 
     for iter_ in range(maxIter):
         # -------- update W matrix --------
+        # print(iter_)
         # first compute Atilde
         AtildeAll = [0.5 * Amat.dot(Amat) - Amat for Amat in A]
         # compute gradient of SM objective with respect to W
         Wgrad = np.zeros(W.shape)
         for i in range(nSub):
-            Wgrad += Shat[i].dot(W).dot(AtildeAll[i]) / float(
-                nSub
-            )  # TODO: why divide by N?
+            # print(i, Shat[i].dtype)
+            Wgrad += Shat[i].dot(W).dot(AtildeAll[i])  # TODO: why divide by N?
         Wgrad += lagParam * (W.dot(W.T).dot(W) - W) + W.dot(LagMult)
         # compute armijo update:
         W = armijoUpdateW_MultiSubject_penalized(

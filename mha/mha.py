@@ -68,7 +68,6 @@ class MHA:
         )
 
 
-
 def project_non_negative(W):
     return W * (W > 0)
 
@@ -92,10 +91,10 @@ def efficient_gradJ(W, X, AA):
     return X_tilde.T.dot(tmp)
 
 
-def project_W(W):
+def project_W(W, ones=False):
     """a much faster implementation of ProjectMax1 (10+ times faster)"""
     am = W.argmax(axis=1)
-    m = W.max(axis=1)
+    m = W.max(axis=1) if not ones else 1
     W = np.zeros_like(W)
     W[np.arange(W.shape[0]), am] = m
     return project_non_negative(W)
@@ -104,17 +103,17 @@ def project_W(W):
 def update_A(W, X, diag=False):
     """a much faster implementation of AupdateNonDiag (10+ times faster)
     and uses more than 4 times less memory"""
-    tmp = efficient_WTcovW(W, X)
+    A = efficient_WTcovW(W, X)
     if not diag:
-        tmp = np.eye(W.shape[1]) - np.linalg.pinv(tmp)
+        A = np.eye(W.shape[1]) - np.linalg.pinv(A)
     else:
-        tmp = np.eye(W.shape[1]) - np.diag(1 / np.diag(tmp))
+        A = np.eye(W.shape[1]) - np.diag(1 / np.diag(A))
     # the operation above sometimes results in a non pos-def matrix, we
     # take care of this by ensuring that the smallest eig-val of A is pos.
-    min_ev = np.min(np.linalg.eig(tmp)[0])
+    min_ev = np.min(np.linalg.eig(A)[0])
     if min_ev <= 0:
-        tmp += np.eye(W.shape[1]) * (np.abs(min_ev) + 0.001)
-    return tmp
+        A += np.eye(W.shape[1]) * (np.abs(min_ev) + 0.001)
+    return A
 
 
 def update_G(W, X, diag=False):
@@ -187,7 +186,8 @@ def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000
         grad += rho * (W.dot(W.T.dot(W) - np.eye(k) + Lambda / rho))
         # compute armijo update:
         W = update_W(W, grad, AA, X, alpha=alpha, c=c)
-        W = normalize_columns(project_non_negative(W))  # to ensure non-negativity
+        # to ensure non-negativity
+        W = normalize_columns(project_non_negative(W))
 
         # -------- update Lagrange multipler --------
         Lambda = Lambda + rho * (W.T.dot(W) - np.eye(k))

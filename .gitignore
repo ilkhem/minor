@@ -1,5 +1,5 @@
 *.pyc
 .ipynb_checkpoints
 tags
-data/
+data/camCAN
 .python-version
