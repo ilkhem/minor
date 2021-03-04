@@ -3,6 +3,7 @@ from mha.mha import project_W
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial import distance as spd
 
+
 def cluster_score(W, W_true, distance='jaccard'):
     """
     Permute the columns of the estimate W in order to be aligned with the columns of W_true.
@@ -32,9 +33,6 @@ def cluster_score(W, W_true, distance='jaccard'):
     """
     # process distance argument
     assert distance in ['jaccard', 'hamming', 'kulsinski']
-    # make sure W and W_true are {0, 1}-values
-    W = project_W(W, ones=True)
-    W_true = project_W(W_true, ones=True)
     # compute cost matrix
     cost = np.sum((W[:, :, None] - W_true[:, None, :]) ** 2, axis=0)
     # solve the assignment problem
@@ -53,3 +51,10 @@ def cluster_score(W, W_true, distance='jaccard'):
         dist = spd.kulsinski(am_W, am_W_true)
     return score, W_aligned, dist, alignment
 
+
+def covariance_mse(Gi, Gi_true):
+    return np.mean((Gi - Gi_true) ** 2)
+
+
+def nll_unseen_data(Gi, X):
+    return .5 * np.log(np.det(Gi)) + .5 * np.trace(np.cov(X, rowvar=False).dot(np.linalg.inv(Gi)))

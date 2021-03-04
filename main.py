@@ -1,7 +1,7 @@
 from mha import MHA, LegacyMHA, project_W
 from data.generate_synth_data import generate_all
 from argparse import ArgumentParser
-from metrics import cluster_score
+from metrics import cluster_score, covariance_mse
 import pickle
 import numpy as np
 import tqdm
@@ -25,9 +25,10 @@ if __name__ == "__main__":
 
     N_vals = [1, 2, 3, 5, 10]
     n_vals = [10, 25, 50, 100, 150, 250, 500, 1000, 1500, 2500]
+    distances = ['jaccard', 'hamming', 'kulsinski']
 
-    res = {N : {n: [] for n in n_vals} for N in N_vals}
-    res_leg = {N : {n: [] for n in n_vals} for N in N_vals}
+    res = {N : {n: {d: [] for d in distances} for n in n_vals} for N in N_vals}
+    res_leg = {N : {n: {d: [] for d in distances} for n in n_vals} for N in N_vals}
 
     for N in N_vals:
         for n in n_vals:
@@ -37,16 +38,21 @@ if __name__ == "__main__":
                 covs = [np.cov(x, rowvar=False) for x in X]
 
                 model = MHA(k=k)
-                model.fit(X=X)
-                Wm = project_W(model.W, ones=True)
-                res[N][n].append(cluster_score(Wm, W)[2])
+                model.fit(X=X, max_iter=5000)
+                for d in distances:
+                    res[N][n][d].append(cluster_score(model.W, W, distance=d))
+                res[N][n]['cov_mse'] = []
+                for i in range(N):
+                    res[N][n]['cov_mse'].append(covariance_mse(model.G[i], G[i]))
 
                 model_leg = LegacyMHA(covs, k=k)
-                model_leg.fit()
-                Wml = project_W(model_leg.W, ones=True)
-                res_leg[N][n].append(cluster_score(Wml, W)[2])
+                model_leg.fit(maxIter=5000)
+                for d in distances:
+                    res_leg[N][n][d].append(cluster_score(model_leg.W, W, distance=d))
+                res_leg[N][n]['cov_mse'] = []
+                for i in range(N):
+                    res_leg[N][n]['cov_mse'].append(covariance_mse(model_leg.G[i], G[i]))
 
-
-    pickle.dump(res, open('results.p', 'wb'))
-    pickle.dump(res_leg, open('results_leg.p', 'wb'))
+    pickle.dump(res, open(f'results_{n_iters}.p', 'wb'))
+    pickle.dump(res_leg, open(f'results_leg_{n_iters}.p', 'wb'))
 

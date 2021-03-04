@@ -21,7 +21,7 @@ class MHA:
             mes += "Full (ie non-diagonal) latent variable covariance"
         return mes
 
-    def fit(self, X, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000):
+    def fit(self, X, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=10000):
         """
         estimate loading matrix and latent variable covariances
         """
@@ -97,7 +97,7 @@ def project_W(W, ones=False):
     m = W.max(axis=1) if not ones else 1
     W = np.zeros_like(W)
     W[np.arange(W.shape[0]), am] = m
-    return project_non_negative(W)
+    return W
 
 
 def update_A(W, X, diag=False):

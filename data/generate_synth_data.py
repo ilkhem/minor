@@ -46,8 +46,9 @@ def generate_G(N=2, k=5, diag=False):
     return G
 
 
-def generate_W(p=50, k=5, ones=True, normalize=False):
+def generate_W(p=50, k=5, normalize=True, ones=False):
     while 1:
+        # generate a matrix with positive entries
         W = np.random.rand(p, k)
         # set all but the max entry to zero, per row
         W = project_W(W, ones=ones)
@@ -74,11 +75,11 @@ def generate_X(n, Z, W):
     return X
 
 
-def generate_all(n=1000, N=2, p=50, k=5, diag=False, ones=True, normalize=False, seed=None):
+def generate_all(n=1000, N=2, p=50, k=5, diag=False, normalize=True, ones=True, seed=None):
     if seed is not None:
         np.random.seed(seed)
-    G = generate_G(N, k, diag)
-    W = generate_W(p, k, ones, normalize)
+    G = generate_G(N, k, diag=diag)
+    W = generate_W(p, k, normalize=normalize, ones=ones)
     Z = generate_Z(n, G)
     X = generate_X(n, Z, W)
     return X, Z, W, G
