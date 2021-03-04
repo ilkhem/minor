@@ -146,6 +146,7 @@ def nonNegativeCovFactor_LagrangeMult(
     for i in range(W.shape[1]):
         if np.sum(W[:, i]) < 0:
             W[:, i] *= -1
+    W = np.real(W)
 
     # define convergence checks
     Wold = np.copy(W)

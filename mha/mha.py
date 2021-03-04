@@ -153,16 +153,23 @@ def update_W(W, grad, A, X, alpha=0.5, c=0.001, tau=0.5, max_iter=1000):
     return W_new
 
 
-def init_W(X, k):
+def init_W(X, k, project=False):
     # TODO: find an impl that doesn't create pxp matrices
     p = X[0].shape[1]
     mean_cov = np.zeros((p, p))  # mean covariance across all subjects
     for i in range(len(X)):
-        mean_cov += (1.0 / len(X)) * np.cov(X[i], rowvar=False)
+        mean_cov += np.cov(X[i], rowvar=False)
+    mean_cov /= float(len(X))
     eig_vals, eig_vecs = np.linalg.eig(mean_cov)
     idx = eig_vals.argsort()[::-1][:k]
-    W = eig_vecs[:, idx]
-    return project_non_negative(W * (2 * (W.sum(0) >= 0) - 1))
+    # because of float imprecision, eig sometimes returns complex eigenvals
+    # and vectors, with very small imaginary part (theoretically, the imaginary
+    # part should be zero since covariance matrices are hermitian)
+    W = np.real(eig_vecs[:, idx])
+    if project:
+        return project_non_negative(W * (2 * (W.sum(0) >= 0) - 1))
+    else:
+        return W * (2 * (W.sum(0) >= 0) - 1)
 
 
 def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000):
