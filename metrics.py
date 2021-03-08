@@ -4,7 +4,7 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial import distance as spd
 
 
-def cluster_score(W, W_true):
+def cluster_score(W, W_true, cost_dist='euclidean'):
     """
     Permute the columns of the estimate W in order to be aligned with the columns of W_true.
     This is because the model is invariant to permutations of the columns of W.
@@ -30,7 +30,16 @@ def cluster_score(W, W_true):
         The row-idx and column-idx of the optinal alignment
     """
     # compute cost matrix
-    cost = np.sum((W[:, :, None] - W_true[:, None, :]) ** 2, axis=0)
+    if cost_dist == 'euclidean':
+        cost = np.sum((W_true[:, :, None] - W[:, None, :]) ** 2, axis=0)
+    else:
+        k = W.shape[1]
+        WW = project_W(W, ones=True)
+        Wt = project_W(W_true, ones=True)
+        cost = np.zeros((k, k))
+        for i in range(k):
+            for j in range(k):
+                cost[i, j] = spd.hamming(WW[:, j], Wt[:, i])
     # solve the assignment problem
     alignment = linear_sum_assignment(cost)
     # compute score

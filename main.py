@@ -27,10 +27,12 @@ if __name__ == "__main__":
     k = args.k
     n_iters = args.n_iters
 
-    res = {'jaccard': [], 'hamming': [], 'kulsinski': [],
-           'score': [], 'cov_mse': {i: [] for i in range(N)}}
-    res_leg = {'jaccard': [], 'hamming': [], 'kulsinski': [],
-               'score': [], 'cov_mse': {i: [] for i in range(N)}}
+    res = {'jaccard': [], 'hamming': [], 'kulsinski': [], 'score': [],
+           'ha_jaccard': [], 'ha_hamming': [], 'ha_kulsinski': [], 'ha_score': [],
+           'cov_mse': {i: [] for i in range(N)}}
+    res_leg = {'jaccard': [], 'hamming': [], 'kulsinski': [], 'score': [],
+               'ha_jaccard': [], 'ha_hamming': [], 'ha_kulsinski': [], 'ha_score': [],
+               'cov_mse': {i: [] for i in range(N)}}
 
     distances = ['jaccard', 'hamming', 'kulsinski']
 
@@ -45,7 +47,11 @@ if __name__ == "__main__":
         for d in distances:
             res[d].append(cs[0][d])
         res['score'].append(cs[1])
-        for in in range(N):
+        cs = cluster_score(model.W, W, cost_dist='hamming')
+        for d in distances:
+            res[f'ha_{d}'].append(cs[0][d])
+        res['ha_score'].append(cs[1])
+        for i in range(N):
             res['cov_mse'][i].append(covariance_mse(model.G[i], G[i]))
 
         model_leg = LegacyMHA(covs, k=k)
@@ -54,7 +60,11 @@ if __name__ == "__main__":
         for d in distances:
             res_leg[d].append(cs[0][d])
         res_leg['score'].append(cs[1])
-        for in in range(N):
+        cs = cluster_score(model_leg.W, W, cost_dist='hamming')
+        for d in distances:
+            res_leg[f'ha_{d}'].append(cs[0][d])
+        res_leg['ha_score'].append(cs[1])
+        for i in range(N):
             res_leg['cov_mse'][i].append(covariance_mse(model_leg.G[i], G[i]))
 
     pickle.dump(res,
