@@ -1,15 +1,17 @@
 from nilearn import plotting
 import numpy as np
+from tqdm import tqdm
 
 
 class MHA:
-    def __init__(self, k, diag=False):
+    def __init__(self, k, diag=False, verbose=False):
         self.k = k
         self.diag = diag
         self.N = 0
         self.W = None
         self.G = None
         self.n_iters = None
+        self.verbose = verbose
 
     def __repr__(self):
         mes = "MHA object\n"
@@ -28,7 +30,8 @@ class MHA:
         self.N = len(X)
         res = optimize(X, self.k, diag=self.diag,
                        rho=rho, tol=tol, max_iter=max_iter,
-                       alpha=alpha, c=c)
+                       alpha=alpha, c=c,
+                       verbose=self.verbose)
         self.W = res["W"]
         self.G = res["G"]
         self.n_iters = res["n_iters"]
@@ -153,8 +156,10 @@ def update_W(W, grad, A, X, alpha=0.5, c=0.001, tau=0.5, max_iter=1000):
     return W_new
 
 
-def init_W(X, k, project=False):
+def init_W(X, k, project=False, verbose=False):
+    """Initialize W by performing a group PCA"""
     # TODO: find an impl that doesn't create pxp matrices
+    if verbose: print("Initializing W ...");
     p = X[0].shape[1]
     mean_cov = np.zeros((p, p))  # mean covariance across all subjects
     for i in range(len(X)):
@@ -166,21 +171,26 @@ def init_W(X, k, project=False):
     # and vectors, with very small imaginary part (theoretically, the imaginary
     # part should be zero since covariance matrices are hermitian)
     W = np.real(eig_vecs[:, idx])
+    # TODO: does projecting improve perf?
     if project:
         return project_non_negative(W * (2 * (W.sum(0) >= 0) - 1))
     else:
         return W * (2 * (W.sum(0) >= 0) - 1)
 
 
-def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000):
+def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000, verbose=False):
     N = len(X)
     # define initial parameters:
     Lambda = np.zeros((k, k))
-    W = init_W(X, k)
+    W = init_W(X, k, verbose=verbose)
     W = normalize_columns(W)
     W_old = np.copy(W)
 
-    for n_iters in range(max_iter):
+    iterator = range(max_iter)
+    if verbose:
+        print("Optimization starting ...")
+        iterator = tqdm(iterator, desc="Optimization:")
+    for n_iters in iterator:
         # -------- update W matrix --------
         # first compute A
         A = [update_A(W, X[i], diag=diag) for i in range(N)]
