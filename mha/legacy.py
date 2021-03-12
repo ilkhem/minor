@@ -1,4 +1,4 @@
-### Python implementation of MHA algorithm (Monti & Hyvarinen, UAI 2018)
+### Code copied from https://github.com/piomonti/MHA/blob/master/MHA_backend.py
 
 from nilearn import plotting
 import numpy as np
