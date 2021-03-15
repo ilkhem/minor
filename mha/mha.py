@@ -1,6 +1,9 @@
 from nilearn import plotting
 import numpy as np
 from tqdm import tqdm
+from sklearn.utils.extmath import randomized_svd, svd_flip
+from scipy.sparse.linalg import svds
+from scipy.linalg import svd
 
 
 class MHA:
@@ -29,9 +32,9 @@ class MHA:
         """
         self.N = len(X)
         res = optimize(X, self.k, diag=self.diag,
-                rho=rho, tol=tol, max_iter=max_iter,
-                alpha=alpha, c=c,
-                verbose=self.verbose)
+                       rho=rho, tol=tol, max_iter=max_iter,
+                       alpha=alpha, c=c,
+                       verbose=self.verbose)
         self.W = res["W"]
         self.G = res["G"]
         self.n_iters = res["n_iters"]
@@ -55,24 +58,24 @@ class MHA:
         """
         ii = np.where(self.W[:, clusterID] != 0)[0]
         RandomMat = np.cov(
-                np.random.random((10, len(ii))).T
-                )  # this is just a place holder, we will not plot any of it!
+            np.random.random((10, len(ii))).T
+        )  # this is just a place holder, we will not plot any of it!
 
         # we just plot the result
         plotting.plot_connectome(
-                RandomMat,
-                ROIcoord[ii, :],
-                node_color="black",
-                annotate=False,
-                display_mode="ortho",
-                edge_kwargs={"alpha": 0},
-                node_size=50,
-                title=title,
-                )
+            RandomMat,
+            ROIcoord[ii, :],
+            node_color="black",
+            annotate=False,
+            display_mode="ortho",
+            edge_kwargs={"alpha": 0},
+            node_size=50,
+            title=title,
+        )
 
 
 def project_non_negative(W):
-            return W * (W > 0)
+    return W * (W > 0)
 
 
 def normalize_columns(W):
@@ -156,50 +159,81 @@ def update_W(W, grad, A, X, alpha=0.5, c=0.001, tau=0.5, max_iter=1000):
     return W_new
 
 
-def init_W(X, k, project=False, verbose=False):
-    """Initialize W by performing a group PCA"""
-    # TODO: find an impl that doesn't create pxp matrices
-    if verbose: print("Initializing W ...");
-    p = X[0].shape[1]
-    mean_cov = np.zeros((p, p))  # mean covariance across all subjects
-    for i in range(len(X)):
-        mean_cov += np.cov(X[i], rowvar=False)
-    mean_cov /= float(len(X))
-    eig_vals, eig_vecs = np.linalg.eig(mean_cov)
-    idx = eig_vals.argsort()[::-1][:k]
-    # because of float imprecision, eig sometimes returns complex eigenvals
-    # and vectors, with very small imaginary part (theoretically, the imaginary
-    # part should be zero since covariance matrices are hermitian)
-    W = np.real(eig_vecs[:, idx])
-    # TODO: does projecting improve perf?
+def init_W(X, k, method='random_svd', project=False, verbose=False, svd_kwargs={}):
+    """
+    Initialize W, either from data X through a PCA, or randomly.
+
+    Parameters:
+    ----------
+    X: list of np.ndarray
+        List containing an observation array per subject.
+    k: int
+        Number of components.
+    method: string
+        Initialization method. Can be one of the following:
+            - random_svd: k-first principal components, computed using the `skleanr.utils.extmath.randomized_svd`
+            method on the concatenation of all observations in X. This method is very fast and memory efficient,
+            but only provides an approximation of the PCs.
+            - sparse_svd: k-first principal components, computed using the `scipy.sparse.linalg.svds` method
+            on the concatenation of all observations in X. This method is exact and memory efficient, as it only
+            computes the first k PCs, but is somewhat slow,
+            - truncated_svd: k-first principal components, computed using the `scip.linalg.svd` method
+            on the concatenation of all observations in X. This method is exact, somewhat fast, but is not
+            memory efficient, as it computes all PCs, and performs eh truncation at the end.
+            - random: Randomly initialize an orthonormal matrix with positive entries. This method is very fast
+            and memory efficient, but results in a mediocre initialization.
+        Defaults to `random_svd`.
+    project: boolean
+        Project resulting W onto the non-negative quadrant.
+    verbose: boolean
+        Toggle verbosity.
+    svd_kwargs: dict
+        Optional keyword arguments for the SVD algorithms.
+
+    Returns:
+    ----------
+    W: np.ndarray
+        An initialization of the loading matrix W.
+    """
+    if verbose:
+        print("Initializing W ...")
+    stacked_X = np.concatenate(X)
+    if method == 'random_svd':
+        _, _, W = randomized_svd(
+            stacked_X, n_components=k, flip_sign=True, **svd_kwargs)
+    elif method == 'sparse_svd':
+        u, _, W = svds(stacked_X, k=k, which='LM', **svd_kwargs)
+        u, W = svd_flip(u[:, ::-1], W[::-1])
+    elif method == 'truncated_svd':
+        u, _, W = svd(stacked_X, full_matrices=False, **svd_kwargs)
+        u, W = svd_flip(u, W)
+        W = W[:k]
+    elif method == 'random':
+        p = X[0].shape[1]
+        while 1:
+            # generate a matrix with positive entries
+            W = np.random.rand(p, k)
+            # set all but the max entry to zero, per row
+            W = project_W(W, ones=True)
+            if np.linalg.matrix_rank(W) == k:
+                break  # we want W to be full rank
+        W = normalize_columns(W).T
+    else:
+        raise ValueError(f'Unknown method {method}')
+    W = W.T
     if project:
         return project_non_negative(W * (2 * (W.sum(0) >= 0) - 1))
     else:
         return W * (2 * (W.sum(0) >= 0) - 1)
 
 
-def random_init_W(X, k, project=False, verbose=False):
-    if verbose: print("Initializing W ...");
-    ones = True
-    normalize = True
-    p = X[0].shape[1]
-    while 1:
-        # generate a matrix with positive entries
-        W = np.random.rand(p, k)
-        # set all but the max entry to zero, per row
-        W = project_W(W, ones=ones)
-        if np.linalg.matrix_rank(W) == k:
-            break  # we want W to be full rank
-    if normalize:
-        W = normalize_columns(W)
-    return W
-
-def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000, verbose=False):
+def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000,
+             init_method='random_svd', svd_kwargs={}, verbose=False):
     N = len(X)
     # define initial parameters:
     Lambda = np.zeros((k, k))
-    W = random_init_W(X, k, verbose=verbose)
-    # W = init_W(X, k, verbose=verbose)
+    W = init_W(X, k, method=init_method,
+               verbose=verbose, svd_kwargs=svd_kwargs)
     W = normalize_columns(W)
     W_old = np.copy(W)
 
