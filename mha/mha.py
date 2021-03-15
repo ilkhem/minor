@@ -29,9 +29,9 @@ class MHA:
         """
         self.N = len(X)
         res = optimize(X, self.k, diag=self.diag,
-                       rho=rho, tol=tol, max_iter=max_iter,
-                       alpha=alpha, c=c,
-                       verbose=self.verbose)
+                rho=rho, tol=tol, max_iter=max_iter,
+                alpha=alpha, c=c,
+                verbose=self.verbose)
         self.W = res["W"]
         self.G = res["G"]
         self.n_iters = res["n_iters"]
@@ -55,24 +55,24 @@ class MHA:
         """
         ii = np.where(self.W[:, clusterID] != 0)[0]
         RandomMat = np.cov(
-            np.random.random((10, len(ii))).T
-        )  # this is just a place holder, we will not plot any of it!
+                np.random.random((10, len(ii))).T
+                )  # this is just a place holder, we will not plot any of it!
 
         # we just plot the result
         plotting.plot_connectome(
-            RandomMat,
-            ROIcoord[ii, :],
-            node_color="black",
-            annotate=False,
-            display_mode="ortho",
-            edge_kwargs={"alpha": 0},
-            node_size=50,
-            title=title,
-        )
+                RandomMat,
+                ROIcoord[ii, :],
+                node_color="black",
+                annotate=False,
+                display_mode="ortho",
+                edge_kwargs={"alpha": 0},
+                node_size=50,
+                title=title,
+                )
 
 
 def project_non_negative(W):
-    return W * (W > 0)
+            return W * (W > 0)
 
 
 def normalize_columns(W):
@@ -178,11 +178,28 @@ def init_W(X, k, project=False, verbose=False):
         return W * (2 * (W.sum(0) >= 0) - 1)
 
 
+def random_init_W(X, k, project=False, verbose=False):
+    if verbose: print("Initializing W ...");
+    ones = True
+    normalize = True
+    p = X[0].shape[1]
+    while 1:
+        # generate a matrix with positive entries
+        W = np.random.rand(p, k)
+        # set all but the max entry to zero, per row
+        W = project_W(W, ones=ones)
+        if np.linalg.matrix_rank(W) == k:
+            break  # we want W to be full rank
+    if normalize:
+        W = normalize_columns(W)
+    return W
+
 def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000, verbose=False):
     N = len(X)
     # define initial parameters:
     Lambda = np.zeros((k, k))
-    W = init_W(X, k, verbose=verbose)
+    W = random_init_W(X, k, verbose=verbose)
+    # W = init_W(X, k, verbose=verbose)
     W = normalize_columns(W)
     W_old = np.copy(W)
 
