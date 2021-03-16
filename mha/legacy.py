@@ -138,26 +138,26 @@ def nonNegativeCovFactor_LagrangeMult(
         ShatMean += (1.0 / nSub) * Shat[i]
     LagMult = np.zeros((k, k))
 
-    # # initialize W to eigenvalues of ShatMean
-    # evdShat = np.linalg.eig(ShatMean)
-    # W = evdShat[1][
-    #     :, evdShat[0].argsort()[::-1][:k]
-    # ]  # np.linalg.eig( ShatMean )[1][ :, :k ]
-    # # check if we should flip the sign (as evectors are sign invariant)  TODO: is the sign flip necessary?
-    # for i in range(W.shape[1]):
-    #     if np.sum(W[:, i]) < 0:
-    #         W[:, i] *= -1
-    # W = np.real(W)
+    # initialize W to eigenvalues of ShatMean
+    evdShat = np.linalg.eig(ShatMean)
+    W = evdShat[1][
+        :, evdShat[0].argsort()[::-1][:k]
+    ]  # np.linalg.eig( ShatMean )[1][ :, :k ]
+    # check if we should flip the sign (as evectors are sign invariant)  TODO: is the sign flip necessary?
+    for i in range(W.shape[1]):
+        if np.sum(W[:, i]) < 0:
+            W[:, i] *= -1
+    W = np.real(W)
 
-    if verbose: print("Initializing W ...");
-    while 1:
-        # generate a matrix with positive entries
-        W = np.random.rand(p, k)
-        # set all but the max entry to zero, per row
-        W = ProjectMax1(W)
-        if np.linalg.matrix_rank(W) == k:
-            break  # we want W to be full rank
-    W = normalizeColumns(W)
+    # if verbose: print("Initializing W ...");
+    # while 1:
+    #     # generate a matrix with positive entries
+    #     W = np.random.rand(p, k)
+    #     # set all but the max entry to zero, per row
+    #     W = ProjectMax1(W)
+    #     if np.linalg.matrix_rank(W) == k:
+    #         break  # we want W to be full rank
+    # W = normalizeColumns(W)
 
     # define convergence checks
     Wold = np.copy(W)

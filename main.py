@@ -41,7 +41,7 @@ if __name__ == "__main__":
         X, Z, W, G = generate_all(n, N, p, k, seed=iteration)
         covs = [np.cov(x, rowvar=False) for x in X]
 
-        model = MHA(k=k)
+        model = MHA(k=k, init_method='sparse_svd')
         model.fit(X=X, max_iter=5000)
         cs = cluster_score(model.W, W)
         for d in distances:

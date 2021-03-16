@@ -7,7 +7,7 @@ from scipy.linalg import svd
 
 
 class MHA:
-    def __init__(self, k, diag=False, verbose=False):
+    def __init__(self, k, diag=False, verbose=False, init_method='random_svd'):
         self.k = k
         self.diag = diag
         self.N = 0
@@ -15,6 +15,7 @@ class MHA:
         self.G = None
         self.n_iters = None
         self.verbose = verbose
+        self.init_method = init_method
 
     def __repr__(self):
         mes = "MHA object\n"
@@ -34,7 +35,8 @@ class MHA:
         res = optimize(X, self.k, diag=self.diag,
                        rho=rho, tol=tol, max_iter=max_iter,
                        alpha=alpha, c=c,
-                       verbose=self.verbose)
+                       verbose=self.verbose,
+                       init_method=self.init_method)
         self.W = res["W"]
         self.G = res["G"]
         self.n_iters = res["n_iters"]
