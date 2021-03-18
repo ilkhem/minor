@@ -113,14 +113,14 @@ def update_A(W, X, diag=False):
     and uses more than 4 times less memory"""
     A = efficient_WTcovW(W, X)
     if not diag:
-        A = np.eye(W.shape[1]) - np.linalg.pinv(A)
+        A = np.eye(W.shape[1], dtype=X.dtype) - np.linalg.pinv(A)
     else:
-        A = np.eye(W.shape[1]) - np.diag(1 / np.diag(A))
+        A = np.eye(W.shape[1], dtype=X.dtype) - np.diag(1 / np.diag(A))
     # the operation above sometimes results in a non pos-def matrix, we
     # take care of this by ensuring that the smallest eig-val of A is pos.
     min_ev = np.min(np.linalg.eig(A)[0])
     if min_ev <= 0:
-        A += np.eye(W.shape[1]) * (np.abs(min_ev) + 0.001)
+        A += np.eye(W.shape[1], dtype=X.dtype) * (np.abs(min_ev) + 0.001)
     return A
 
 
@@ -128,7 +128,7 @@ def update_G(W, X, diag=False):
     tmp = efficient_WTcovW(W, X)
     if diag:
         tmp = np.diag(np.diag(tmp))
-    return tmp - np.eye(W.shape[1])
+    return tmp - np.eye(W.shape[1], dtype=X.dtype)
 
 
 def armijo_obj(W, X, A):
@@ -223,17 +223,16 @@ def init_W(X, k, method='random_svd', project=False, verbose=False, svd_kwargs={
     else:
         raise ValueError(f'Unknown method {method}')
     W = W.T
-    if project:
-        return project_non_negative(W * (2 * (W.sum(0) >= 0) - 1))
-    else:
-        return W * (2 * (W.sum(0) >= 0) - 1)
+    W = (W * (2 * (W.sum(0) >= 0) - 1)).astype(X[0].dtype)
+    return project_non_negative(W) if project else W
 
 
 def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000,
              init_method='random_svd', svd_kwargs={}, verbose=False):
     N = len(X)
+    dt = X[0].dtype
     # define initial parameters:
-    Lambda = np.zeros((k, k))
+    Lambda = np.zeros((k, k), dtype=dt)
     W = init_W(X, k, method=init_method,
                verbose=verbose, svd_kwargs=svd_kwargs)
     W = normalize_columns(W)
@@ -249,18 +248,18 @@ def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000
         A = [update_A(W, X[i], diag=diag) for i in range(N)]
         AA = [0.5 * a.dot(a) - a for a in A]
         # compute gradient of SM objective with respect to W
-        grad = np.zeros(W.shape)
+        grad = np.zeros(W.shape, dtype=dt)
         for i in range(N):
             # grad += efficient_gradJ(W, X[i], AA[i]) / float(N)
             grad += efficient_gradJ(W, X[i], AA[i])
-        grad += rho * (W.dot(W.T.dot(W) - np.eye(k) + Lambda / rho))
+        grad += rho * (W.dot(W.T.dot(W) - np.eye(k, dtype=dt) + Lambda / rho))
         # compute armijo update:
         W = update_W(W, grad, AA, X, alpha=alpha, c=c)
         # to ensure non-negativity
         W = normalize_columns(project_non_negative(W))
 
         # -------- update Lagrange multipler --------
-        Lambda = Lambda + rho * (W.T.dot(W) - np.eye(k))
+        Lambda = Lambda + rho * (W.T.dot(W) - np.eye(k, dtype=dt))
 
         # -------- check for convergence --------
         if np.linalg.norm(W - W_old) < tol:
