@@ -26,7 +26,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def parse_dtype(dtype):
+def _parse_dtype(dtype):
     if dtype == 'float32':
         return np.float32
     elif dtype == 'float64':
@@ -34,21 +34,42 @@ def parse_dtype(dtype):
     else:
         raise ValueError(f"illegal dtype: {dtype}")
 
+
 def _delist_single(l):
     return l[0] if len(l) == 1 else l
+
+
+def _format_idx(idx):
+    idx = _check_idx(idx)
+    return ''.join([str(int(i) - 1) for i in idx])
+
+
+def _format_im(im):
+    idict = {'random_svd': 'rsvd', 'random': 'r',
+             'sparse_svd': 'svds', 'truncated_svd', 'tsvd'}
+    return idict[im]
+
 
 def main():
     args = parse_arguments()
     k = args.k
+    v = args.verbose
     run_dir = args.run
-    dtype = parse_dtype(args.dtype)
-    args.sub = _delist_single(args.sub)
-    args.ses = _delist_single(args.ses)
+    dtype = _parse_dtype(args.dtype)
+    sub_idx = _delist_single(args.sub)
+    ps = _format_idx(sub_idx)
+    ses_idx = _delist_single(args.ses)
+    pe = _format_idx(ses_idx)
+    im = args.init_method
+    pim = _format_im(im)
 
-    print("subjects", _check_idx(args.sub))
-    print("sessions", _check_idx(args.ses))
-    print(type(_check_idx(args.ses)))
-    # os.makedirs(run_dir, exist_ok=True)
+    data = load(sub_idx=sub_idx, ses_idx=ses_idx, dtype=dtype)
+    model = MHA(k=k)
+    model.fit(data, verbose=v, init_method=im, max_iter=20000)
+
+    os.makedirs(run_dir, exist_ok=True)
+    pickle.dump({'W': model.W, 'n_iters': model.n_iters},
+                open(f'{run_dir}/par_{pim}_k{k}_s{ps}_e{pe}.p', 'wb'))
 
 
 if __name__ == "__main__":
