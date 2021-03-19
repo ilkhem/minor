@@ -6,9 +6,12 @@ from scipy.spatial import distance as spd
 
 def cluster_score(W, W_true, cost_dist='euclidean'):
     """
-    Permute the columns of the estimate W in order to be aligned with the columns of W_true.
+    Permutes the columns of the estimate W in order to be aligned with the columns of W_true.
     This is because the model is invariant to permutations of the columns of W.
-    We do this by solving a linear sum assignment problem using the Hungarian algorithm.
+    We do this by solving a linear sum assignment problem using the Hungarian algorithm, based
+    on a specifed cost function.
+
+    Subsequently, computes several distances between the true and estimated loading matrices.
 
     Parameters:
     ----------
@@ -21,13 +24,13 @@ def cluster_score(W, W_true, cost_dist='euclidean'):
     ----------
     distances: dict
         The distance between the true and the estimated clusters.
-        Compute the "Jaccard", "Hamming" and "Kulsinski" distances and return them as a dict.
+        Computes the "Jaccard", "Hamming" and "Kulsinski" distances and return them as a dict.
     score: float
         The optimal assignment cost.
     W_aligned: np.ndarray
         A copy of W with its columns rearranged according to the optimal alignment.
     alignment: tuple of (np.ndarray, np.ndarray)
-        The row-idx and column-idx of the optinal alignment
+        The row-idx and column-idx of the optimal alignment.
     """
     # compute cost matrix
     if cost_dist == 'euclidean':

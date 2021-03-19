@@ -6,76 +6,6 @@ from scipy.sparse.linalg import svds
 from scipy.linalg import svd
 
 
-class MHA:
-    def __init__(self, k, diag=False, verbose=False, init_method='random_svd'):
-        self.k = k
-        self.diag = diag
-        self.N = 0
-        self.W = None
-        self.G = None
-        self.n_iters = None
-        self.verbose = verbose
-        self.init_method = init_method
-
-    def __repr__(self):
-        mes = "MHA object\n"
-        mes += "Number of subjects: " + str(self.N) + "\n"
-        mes += "Latent variable dim: " + str(self.k) + "\n"
-        if self.diag:
-            mes += "Diagonal latent variable covariance"
-        else:
-            mes += "Full (ie non-diagonal) latent variable covariance"
-        return mes
-
-    def fit(self, X, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=10000):
-        """
-        estimate loading matrix and latent variable covariances
-        """
-        self.N = len(X)
-        res = optimize(X, self.k, diag=self.diag,
-                       rho=rho, tol=tol, max_iter=max_iter,
-                       alpha=alpha, c=c,
-                       verbose=self.verbose,
-                       init_method=self.init_method)
-        self.W = res["W"]
-        self.G = res["G"]
-        self.n_iters = res["n_iters"]
-
-    def transform(self, Xnew):
-        """
-        apply projection matrix, W, to new data
-
-        INPUT:
-                - Xnew: list of numpy array, each entry should be an n by p array of n observations for p random variables
-        """
-        ProjXnew = [X.dot(self.W) for X in Xnew]
-        return ProjXnew
-
-    def plot(self, ROIcoord, clusterID, title):
-        """
-        INPUT:
-                - ROIcoord: MNNI coordinates
-                - clusterID: which cluster should we plot
-
-        """
-        ii = np.where(self.W[:, clusterID] != 0)[0]
-        RandomMat = np.cov(
-            np.random.random((10, len(ii))).T
-        )  # this is just a place holder, we will not plot any of it!
-
-        # we just plot the result
-        plotting.plot_connectome(
-            RandomMat,
-            ROIcoord[ii, :],
-            node_color="black",
-            annotate=False,
-            display_mode="ortho",
-            edge_kwargs={"alpha": 0},
-            node_size=50,
-            title=title,
-        )
-
-
 def project_non_negative(W):
     return W * (W > 0)
 
@@ -271,3 +201,72 @@ def optimize(X, k, diag=False, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=1000
     G = [update_G(W, X[i], diag=diag) for i in range(N)]
 
     return {"W": W, "G": G, "n_iters": n_iters}
+
+
+class MHA:
+    def __init__(self, k, diag=False):
+        self.k = k
+        self.diag = diag
+        self.N = 0
+        self.W = None
+        self.G = None
+        self.n_iters = None
+
+    def fit(self, X, rho=1, tol=0.01, alpha=0.5, c=0.01, max_iter=10000,
+            verbose=False, init_method='random_svd', svd_kwargs={}):
+        """
+        estimate loading matrix and latent variable covariances
+        """
+        self.N = len(X)
+        res = optimize(X, k=self.k, diag=self.diag,
+                       rho=rho, tol=tol, max_iter=max_iter,
+                       alpha=alpha, c=c,
+                       verbose=verbose,
+                       init_method=init_method,
+                       svd_kwargs=svd_kwargs)
+        self.W = res["W"]
+        self.G = res["G"]
+        self.n_iters = res["n_iters"]
+
+    def transform(self, X_new):
+        """
+        apply projection matrix, W, to new data
+
+        INPUT:
+            - Xnew: list of numpy array, each entry should be an n by p array of n observations for p random variables
+        """
+        projected_X_new = [X.dot(self.W) for X in X_new]
+        return projected_X_new
+
+    def plot(self, roi_coord, cluster_id, title):
+        """
+        INPUT:
+                - ROIcoord: MNNI coordinates
+                - clusterID: which cluster should we plot
+
+        """
+        ii = np.where(self.W[:, cluster_id] != 0)[0]
+        # this is just a place holder, we will not plot any of it!
+        random_mat = np.cov(np.random.random((len(ii), 10)))
+
+        # we just plot the result
+        plotting.plot_connectome(
+            random_mat,
+            roi_coord[ii, :],
+            node_color="black",
+            annotate=False,
+            display_mode="ortho",
+            edge_kwargs={"alpha": 0},
+            node_size=50,
+            title=title,
+        )
+
+    def __repr__(self):
+        mes = "MHA object\n"
+        mes += "Number of subjects: " + str(self.N) + "\n"
+        mes += "Latent variable dim: " + str(self.k) + "\n"
+        if self.diag:
+            mes += "Diagonal latent variable covariance"
+        else:
+            mes += "Full (ie non-diagonal) latent variable covariance"
+        return mes
