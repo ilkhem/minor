@@ -46,7 +46,7 @@ def _format_idx(idx):
 
 def _format_im(im):
     idict = {'random_svd': 'rsvd', 'random': 'r',
-             'sparse_svd': 'svds', 'truncated_svd', 'tsvd'}
+             'sparse_svd': 'svds', 'truncated_svd': 'tsvd'}
     return idict[im]
 
 
@@ -62,14 +62,18 @@ def main():
     pe = _format_idx(ses_idx)
     im = args.init_method
     pim = _format_im(im)
+    max_iter = 30000
 
     data = load(sub_idx=sub_idx, ses_idx=ses_idx, dtype=dtype)
     model = MHA(k=k)
-    model.fit(data, verbose=v, init_method=im, max_iter=20000)
+    model.fit(data, verbose=v, init_method=im, max_iter=max_iter)
+
+    pn = '' if mode.max_iters <max_iter else 'c'
 
     os.makedirs(run_dir, exist_ok=True)
-    pickle.dump({'W': model.W, 'n_iters': model.n_iters},
-                open(f'{run_dir}/par_{pim}_k{k}_s{ps}_e{pe}.p', 'wb'))
+    print("Training done. Saving matrices...")
+    pickle.dump({'W': model.W, 'G': model.G, 'n_iters': model.n_iters},
+                open(f'{run_dir}/par_{pim}_k{k}_s{ps}_e{pe}{pn}.p', 'wb'))
 
 
 if __name__ == "__main__":
