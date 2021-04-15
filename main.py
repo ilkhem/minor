@@ -68,7 +68,7 @@ def main():
     model = MHA(k=k)
     model.fit(data, verbose=v, init_method=im, max_iter=max_iter)
 
-    pn = '' if mode.max_iters <max_iter else 'c'
+    pn = '' if model.n_iters < max_iter else 'c'
 
     os.makedirs(run_dir, exist_ok=True)
     print("Training done. Saving matrices...")
