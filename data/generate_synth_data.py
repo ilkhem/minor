@@ -34,14 +34,14 @@ def generate_G(N=2, k=5, diag=False):
     G = []
     for i in range(N):
         if diag:
-            tmp = np.diag(5 * np.random.rand(k) + 0.1)
+            tmp = np.eye(k)
         else:
             while 1:
-                tmp = np.random.randn(k, k)
-                if np.linalg.matrix_rank(tmp) == k:
-                    break  # generate an invertible square matrix
-            # MM^T is always positive definite for an invertible M
-            tmp = tmp.dot(tmp.T)
+                tmp = np.tril(np.random.rand(k, k), -1)
+                tmp += tmp.T + np.eye(k)
+                # make sure tmp is positive definite
+                if np.all(np.linalg.eigvals(tmp) > 0):
+                    break
         G.append(tmp)
     return G
 
