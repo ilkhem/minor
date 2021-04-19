@@ -7,7 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from mha import MHA, LegacyMHA, project_W
 from data.generate_synth_data import generate_all
-from metrics import cluster_score, covariance_mse
+from metrics import get_alignment, distances
 
 
 def parse_arguments():
@@ -28,45 +28,52 @@ def parse_arguments():
 
 def main_sim(N, n, p, k, n_iters, run_dir):
 
-    res = {'jaccard': [], 'hamming': [], 'kulsinski': [], 'score': [],
-           'ha_jaccard': [], 'ha_hamming': [], 'ha_kulsinski': [], 'ha_score': [],
-           'cov_mse': {i: [] for i in range(N)}}
-    res_leg = {'jaccard': [], 'hamming': [], 'kulsinski': [], 'score': [],
-               'ha_jaccard': [], 'ha_hamming': [], 'ha_kulsinski': [], 'ha_score': [],
-               'cov_mse': {i: [] for i in range(N)}}
-
-    distances = ['jaccard', 'hamming', 'kulsinski']
+    keys = ['jaccard', 'hamming', 'kulsinski', 'score', 'ha_jaccard', 'ha_hamming',
+            'ha_kulsinski', 'ha_score', 'cov_mse', 'cov_mse_mean', 'cov_mse_max',
+            'ha_cov_mse', 'ha_cov_mse_mean', 'ha_cov_mse_max', 'run_time']
+    res = {key: [] for key in keys}
+    res_leg = {key: [] for key in keys}
 
     print(f"Running for {N} subjects and {n} observations")
     for iteration in tqdm(range(n_iters)):
         X, Z, W, G = generate_all(n, N, p, k, seed=iteration)
         covs = [np.cov(x, rowvar=False) for x in X]
 
+        st = time.time()
         model = MHA(k=k)
         model.fit(X=X, max_iter=5000, init_method='sparse_svd')
-        cs = cluster_score(model.W, W)
-        for d in distances:
-            res[d].append(cs[0][d])
-        res['score'].append(cs[1])
-        cs = cluster_score(model.W, W, cost_dist='hamming')
-        for d in distances:
-            res[f'ha_{d}'].append(cs[0][d])
-        res['ha_score'].append(cs[1])
-        for i in range(N):
-            res['cov_mse'][i].append(covariance_mse(model.G[i], G[i]))
+        duration = time.time() - st
+        res['run_time'].append(duration)
+        # align according to eucl distance
+        alignment, score = get_alignment(model.W, W)
+        dists = distances(model.W, W, model.G, G, alignment=alignment)
+        res['score'].append(score)
+        for dist_key, dist_value in dists.items():
+            res[dist_key].append(dist_value)
+        # align according to hamming distance
+        alignment, score = get_alignment(model.W, W, cost_dist='hamming')
+        dists = distances(model.W, W, model.G, G, alignment=alignment)
+        res['ha_score'].append(score)
+        for dist_key, dist_value in dists.items():
+            res[f'ha_{dist_key}'].append(dist_value)
 
+        st = time.time()
         model_leg = LegacyMHA(covs, k=k)
         model_leg.fit(maxIter=5000)
-        cs = cluster_score(model_leg.W, W)
-        for d in distances:
-            res_leg[d].append(cs[0][d])
-        res_leg['score'].append(cs[1])
-        cs = cluster_score(model_leg.W, W, cost_dist='hamming')
-        for d in distances:
-            res_leg[f'ha_{d}'].append(cs[0][d])
-        res_leg['ha_score'].append(cs[1])
-        for i in range(N):
-            res_leg['cov_mse'][i].append(covariance_mse(model_leg.G[i], G[i]))
+        duration = time.time() - st
+        res_leg['run_time'].append(duration)
+        # align according to eucl distance
+        alignment, score = get_alignment(model.W, W)
+        dists = distances(model.W, W, model.G, G, alignment=alignment)
+        res_leg['score'].append(score)
+        for dist_key, dist_value in dists.items():
+            res_leg[dist_key].append(dist_value)
+        # align according to hamming distance
+        alignment, score = get_alignment(model.W, W, cost_dist='hamming')
+        dists = distances(model.W, W, model.G, G, alignment=alignment)
+        res_leg['ha_score'].append(score)
+        for dist_key, dist_value in dists.items():
+            res_leg[f'ha_{dist_key}'].append(dist_value)
 
     pickle.dump(res,
                 open(f'{run_dir}/results_{N}_{n}_{p}_{k}_{n_iters}.p', 'wb'))

@@ -4,13 +4,49 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial import distance as spd
 
 
-def cluster_score(W, W_true, cost_dist='euclidean'):
+def get_alignment(W, W_true, cost_dist='euclidean'):
     """
     Permutes the columns of the estimate W in order to be aligned with the columns of W_true.
     This is because the model is invariant to permutations of the columns of W.
     We do this by solving a linear sum assignment problem using the Hungarian algorithm, based
     on a specifed cost function.
+    """
+    # compute cost matrix
+    # C_ij = cost to match i-th col of W_true with j-th col of W
+    if cost_dist == 'euclidean':
+        cost = np.sum((W_true[:, :, None] - W[:, None, :]) ** 2, axis=0)
+    else:
+        k = W.shape[1]
+        WW = project_W(W, ones=True)
+        Wt = project_W(W_true, ones=True)
+        cost = np.zeros((k, k))
+        for i in range(k):
+            for j in range(k):
+                cost[i, j] = spd.hamming(WW[:, j], Wt[:, i])
+    # solve the assignment problem
+    alignment = linear_sum_assignment(cost)
+    # compute score
+    score = np.mean(cost[alignment])
+    return alignment[1], score
 
+
+def align_from_permutation(W, G, alignment=None):
+    if alignment is None:
+        alignment = np.arange(W.shape[1])
+    inverse_alignment = np.argsort(alignment)
+    Wal = W.copy()[:, alignment]
+    Gal = [Gi.copy()[inverse_alignment][:, alignment] for Gi in G]
+    return Wal, Gal
+
+
+def align(W, W_true, G, cost_dist='euclidean'):
+    alignment, score = get_alignment(W, W_true, cost_dist)
+    Wal, Gal = align_from_permutation(W, G, alignment)
+    return Wal, Gal, alignment, score
+
+
+def cluster_score(W, W_true, cost_dist='euclidean'):
+    """
     Subsequently, computes several distances between the true and estimated loading matrices.
 
     Parameters:
@@ -32,22 +68,9 @@ def cluster_score(W, W_true, cost_dist='euclidean'):
     alignment: tuple of (np.ndarray, np.ndarray)
         The row-idx and column-idx of the optimal alignment.
     """
-    # compute cost matrix
-    if cost_dist == 'euclidean':
-        cost = np.sum((W_true[:, :, None] - W[:, None, :]) ** 2, axis=0)
-    else:
-        k = W.shape[1]
-        WW = project_W(W, ones=True)
-        Wt = project_W(W_true, ones=True)
-        cost = np.zeros((k, k))
-        for i in range(k):
-            for j in range(k):
-                cost[i, j] = spd.hamming(WW[:, j], Wt[:, i])
-    # solve the assignment problem
-    alignment = linear_sum_assignment(cost)
-    # compute score
-    score = np.mean(cost[alignment])
-    # create an aligned version of W
+    # align W to W_true by shuffling its columns
+    alignment, score = get_alignment(W, W_true, cost_dist)
+    # create an aligned version of W by permuting its columns
     W_aligned = W.copy()[:, alignment[1]]
     # compare clusters
     am_W, am_W_true = W_aligned.argmax(1), W_true.argmax(1)
@@ -58,8 +81,31 @@ def cluster_score(W, W_true, cost_dist='euclidean'):
     return distances, score, W_aligned, alignment
 
 
-def covariance_mse(Gi, Gi_true):
-    return np.mean((Gi - Gi_true) ** 2)
+def single_covariance_mse(Gi, Gi_true, alignment=None):
+    if alignment is None:
+        alignment = np.arange(Gi.shape[0])
+    inverse_alignment = np.argsort(alignment)
+    return np.mean((Gi[inverse_alignment][:, alignment] - Gi_true) ** 2)
+
+
+def covariance_mse(G, G_true, alignment=None):
+    return [single_covariance_mse(G[i], G_true[i], alignment) for i in range(len(G))]
+
+
+def distances(W, W_true, G, G_true, alignment=None):
+    if alignment is None:
+        alignment = np.arange(W.shape[1])
+    Wal, Gal = align_from_permutation(W, G, alignment)
+    am_W, am_W_true = Wal.argmax(1), W_true.argmax(1)
+    distances = {}
+    distances['jaccard'] = spd.jaccard(am_W, am_W_true)
+    distances['hamming'] = spd.hamming(am_W, am_W_true)
+    distances['kulsinski'] = spd.kulsinski(am_W, am_W_true)
+    cov_mse = covariance_mse(Gal, G_true)
+    distances['cov_mse'] = cov_mse
+    distances['cov_mse_mean'] = np.mean(cov_mse)
+    distances['cov_mse_max'] = np.max(cov_mse)
+    return distances
 
 
 def nll_unseen_data(Gi, X):
