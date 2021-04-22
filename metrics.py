@@ -108,5 +108,24 @@ def distances(W, W_true, G, G_true, alignment=None):
     return distances
 
 
-def nll_unseen_data(Gi, X):
-    return .5 * np.log(np.det(Gi)) + .5 * np.trace(np.cov(X, rowvar=False).dot(np.linalg.inv(Gi)))
+def log_likelihood(X, W, G):
+    """
+    Compute the likelihood of an N-sample X, which follows an MHA model,
+    i.e. X has a Gaussian distribution with 0 mean and covariance Sigma,
+    where Sigma = WGW^T + I, W is (p, k) and G is (k, k).
+    When p >> k, computing Sigma and plugging it into the formula for the ll
+    is very costly, and total cost is O(p^3).
+    The below implementation uses the fact that Sigma can be written as a function
+    of the lower dimensional matrices G and W, and reduces the cost to O(max(p^2, k^3)).
+    """
+    p, k = W.shape
+    # compute log(det(Sigma)) efficiently, using Sylvester's determinant theorem
+    WtW = W.T.dot(W)
+    elds = np.log(np.linalg.det(np.eye(k) + WtW.dot(G)))
+    # compute x^T.Sigma^-1.x efficiently, using Woodbury matrix lemma + some algebra
+    WtX = X.dot(W)
+    GG = G.dot(np.linalg.inv(WtW.dot(G) + np.eye(k)))
+    etxsx = np.einsum('bi,bi->b', X, X) - \
+        np.einsum('bi,ij,bj->b', WtX, GG, WtX)
+    ll = - .5 * (np.log(2 * np.pi) * p + elds + etxsx)
+    return ll
